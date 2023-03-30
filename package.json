@@ -1,0 +1,14 @@
+{
+  "name": "EnhencerEvents",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "start": "node node_modules/react-native/local-cli/cli.js start"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "^1.18.0",
+    "@react-native-firebase/analytics": "^17.4.0",
+    "react-native": "^0.71.4",
+    "react-native-fbsdk-next": "^11.2.0"
+  }
+}
