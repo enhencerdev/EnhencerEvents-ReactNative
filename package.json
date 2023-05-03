@@ -1,9 +1,23 @@
 {
-  "name": "EnhencerEvents",
+  "name": "enhencerevents-react-native",
   "version": "0.0.1",
-  "private": true,
+  "private": false,
+  "main" : "src/EnhencerEvents.js",
+  "description": "Enhencer Events SDK support for React Native apps.",
+  "contributors": [
+    {
+      "name": "Zülal Karin"
+    },
+    {
+      "name": "Orkhan Meh"
+    }
+  ],
   "scripts": {
     "start": "node node_modules/react-native/local-cli/cli.js start"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/enhencerdev/EnhencerEvents-ReactNative.git"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^1.18.0",
