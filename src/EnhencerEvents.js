@@ -3,27 +3,31 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppEventsLogger } from 'react-native-fbsdk-next';
 import analytics from '@react-native-firebase/analytics';
 
-module.exports ={
-EnhencerEvents: class EnhencerEvents {
+export default class {
   constructor(token) {
     this.userID = token;
-    this.visitorID = "";
+    this.visitorID;
     this.type = "ecommerce";
     this.deviceType = Platform.OS;
-    this.listingUrl = "https://collect-app.enhencer.com/api/listings/";
-    this.productUrl = "https://collect-app.enhencer.com/api/products/";
-    this.purchaseUrl = "https://collect-app.enhencer.com/api/purchases/";
-    this.customerUrl = "https://collect-app.enhencer.com/api/customers/";
+    // this.domain = "https://collect-app.enhencer.com/api/"
+    this.domain = "http://localhost:4000/api/"
+    this.listingUrl = this.domain + "listings/";
+    this.productUrl = this.domain + "products/";
+    this.purchaseUrl = this.domain + "purchases/";
+    this.customerUrl = this.domain + "customers/";
     this.setVisitorID();
   }
 
+  config (token){
+    this.userID = token;
+  }
+
   setVisitorID = async () => {
-    let vId = await AsyncStorage.getItem("enh_visitor_id");
-    if (!vId) {
-      vId = this.generateVisitorID();
-      await AsyncStorage.setItem("enh_visitor_id", vId);
+    this.visitorID = await AsyncStorage.getItem("enh_visitor_id");
+    if (!this.visitorID) {
+      this.visitorID = this.generateVisitorID();
+      await AsyncStorage.setItem("enh_visitor_id", this.visitorID);
     }
-    return vId;
   };
 
   generateVisitorID = () => {
@@ -45,8 +49,10 @@ EnhencerEvents: class EnhencerEvents {
       deviceType: this.deviceType,
       userID: this.userID,
       id: this.visitorID,
+      actionType: "listing",
     });
-    this.sendRequest(parameters, this.listingUrl, "POST");
+    
+    this.sendRequest(parameters, this.listingUrl, "POST")
     this.sendRequest(parameters, this.customerUrl, "POST");
 
     this.scoreMe();
@@ -64,6 +70,7 @@ EnhencerEvents: class EnhencerEvents {
       userID: this.userID,
       id: this.visitorID,
     });
+
     this.sendRequest(parameters, this.productUrl, "POST");
     this.sendRequest(parameters, this.customerUrl, "POST");
 
@@ -111,7 +118,7 @@ EnhencerEvents: class EnhencerEvents {
         method: requestMethod,
         headers: {
           "Content-Type": "application/json",
-          Accept: "application/json",
+          "Accept": "application/json",
         },
         body: jsonObjectString,
       });
@@ -121,11 +128,11 @@ EnhencerEvents: class EnhencerEvents {
         prettyJson = JSON.stringify(jsonResponse);
         return prettyJson;
       } else {
-        console.error("HTTPURLCONNECTION_ERROR", response.status);
+        // console.error("HTTPURLCONNECTION_ERROR", JSON.stringify(response));
         return "";
       }
     } catch (error) {
-      console.error("sendRequest error:", error);
+      // console.error("Request error:", error);
       return "";
     }
   }
@@ -147,21 +154,22 @@ EnhencerEvents: class EnhencerEvents {
     let requestMethod = "PUT";
 
     let response = await this.sendRequest(parameters, url, requestMethod);
-    
+
     this.pushResult(response);
 
   }
 
   pushResult(response) {
     let jsonObject = JSON.parse(response);
+    
     let audiences = jsonObject.audiences;
-    audiences.forEach((audience) => {
+    audiences?.forEach((audience) => {
       this.pushToFacebook(audience);
       this.pushToGoogle(audience)
     })
   }
- 
-  pushToFacebook(audience) {
+
+  pushToFacebook = (audience) => {
     let params = {
       eventID: audience.eventId,
       name: audience.name
@@ -169,10 +177,10 @@ EnhencerEvents: class EnhencerEvents {
     AppEventsLogger.logEvent(audience.name, params);
   }
 
-  pushToGoogle(audience) {
+  pushToGoogle = (audience) => {
     let name = audience.name.replace(/\s/g, '_').toLowerCase();
     analytics().logEvent(name, {});
   }
 
 }
-}
+
