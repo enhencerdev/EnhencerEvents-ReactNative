@@ -9,7 +9,7 @@ export default class {
     this.visitorID;
     this.type = "ecommerce";
     this.deviceType = Platform.OS;
-    this.domain = "https://collect-app.enhencer.com/api/"
+    this.domain = process.env.NODE_ENV === "production" ? "https://collect-app.enhencer.com/api/" : "http://localhost:4000/api/"
     this.listingUrl = this.domain + "listings/";
     this.productUrl = this.domain + "products/";
     this.purchaseUrl = this.domain + "purchases/";
