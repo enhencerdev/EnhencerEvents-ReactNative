@@ -1,6 +1,6 @@
 {
   "name": "enhencerevents-react-native",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": false,
   "main": "src/EnhencerEvents.js",
   "description": "Enhencer Events SDK support for React Native apps.",
