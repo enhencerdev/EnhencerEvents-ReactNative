@@ -3,7 +3,6 @@ import { MMKV } from 'react-native-mmkv';
 import { AppEventsLogger } from 'react-native-fbsdk-next';
 import analytics from '@react-native-firebase/analytics';
 
-const storage = new MMKV();
 
 export default class {
   constructor(token) {
@@ -17,6 +16,7 @@ export default class {
     this.purchaseUrl = this.domain + "purchases/";
     this.customerUrl = this.domain + "customers/";
     this.setVisitorID();
+    this.storage = new MMKV();
   }
 
   config (token){
@@ -25,16 +25,16 @@ export default class {
 
   setVisitorID = async () => {
     try {
-        const storedVisitorID = storage.getString("enh_visitor_id");
-        if (!storedVisitorID) {
-            this.visitorID = this.generateVisitorID();
-            storage.set("enh_visitor_id", this.visitorID);
-        } else {
-            this.visitorID = storedVisitorID;
-        }
-    } catch (error) {
-        console.error("VisitorID setting error:", error);
+      const storedVisitorID = this.storage.getString("enh_visitor_id");
+      if (!storedVisitorID) {
         this.visitorID = this.generateVisitorID();
+        this.storage.set("enh_visitor_id", this.visitorID);
+      } else {
+        this.visitorID = storedVisitorID;
+      }
+    } catch (error) {
+      console.error("VisitorID setting error:", error);
+      this.visitorID = this.generateVisitorID();
     }
   };
 
@@ -127,9 +127,9 @@ export default class {
   async sendRequest(jsonObjectString, url, requestMethod) {
     try {
 
-      if (url.includes('localhost') && Platform.OS === 'ios') {
-        url = url.replace('localhost', '192.168.1.109');
-      }
+      // if (url.includes('localhost') && Platform.OS === 'ios') {
+      //   url = url.replace('localhost', '192.168.1.107');
+      // }
       
       const response = await fetch(url, {
         method: requestMethod,
@@ -155,14 +155,14 @@ export default class {
 
   async scoreMe() {
 
-    const lastScoreTime = storage.getString("enh_last_score_time");
-    const lastScoreResponse = storage.getString("enh_last_score_response");
+    const lastScoreTime = this.storage.getString("enh_last_score_time");
+    const lastScoreResponse = this.storage.getString("enh_last_score_response");
     const now = new Date().getTime();
     const threeDaysInMs = 3 * 24 * 60 * 60 * 1000;
 
     if (lastScoreTime && lastScoreResponse && (now - parseInt(lastScoreTime) < threeDaysInMs)) {
-        this.pushResult(lastScoreResponse);
-        return;
+      this.pushResult(lastScoreResponse);
+      return;
     }
 
     let parameters = JSON.stringify({
@@ -183,8 +183,8 @@ export default class {
     let response = await this.sendRequest(parameters, url, requestMethod);
 
     if (response) {
-        storage.set("enh_last_score_time", now.toString());
-        storage.set("enh_last_score_response", response);
+      this.storage.set("enh_last_score_time", now.toString());
+      this.storage.set("enh_last_score_response", response);
     }
 
     this.pushResult(response);
