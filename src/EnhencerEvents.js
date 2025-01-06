@@ -1,15 +1,17 @@
 import { Platform } from "react-native";
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { MMKV } from 'react-native-mmkv';
 import { AppEventsLogger } from 'react-native-fbsdk-next';
 import analytics from '@react-native-firebase/analytics';
+
+const storage = new MMKV();
 
 export default class {
   constructor(token) {
     this.userID = token;
-    this.visitorID;
+    this.visitorID = null;
     this.type = "ecommerce";
     this.deviceType = Platform.OS;
-    this.domain = process.env.NODE_ENV === "production" ? "https://collect-app.enhencer.com/api/" : "http://localhost:4000/api/"
+    this.domain = process.env.NODE_ENV === "production" ? "https://collect-app.enhencer.com/api/" : "http://localhost:8080/api/"
     this.listingUrl = this.domain + "listings/";
     this.productUrl = this.domain + "products/";
     this.purchaseUrl = this.domain + "purchases/";
@@ -22,10 +24,17 @@ export default class {
   }
 
   setVisitorID = async () => {
-    this.visitorID = await AsyncStorage.getItem("enh_visitor_id");
-    if (!this.visitorID) {
-      this.visitorID = this.generateVisitorID();
-      await AsyncStorage.setItem("enh_visitor_id", this.visitorID);
+    try {
+        const storedVisitorID = storage.getString("enh_visitor_id");
+        if (!storedVisitorID) {
+            this.visitorID = this.generateVisitorID();
+            storage.set("enh_visitor_id", this.visitorID);
+        } else {
+            this.visitorID = storedVisitorID;
+        }
+    } catch (error) {
+        console.error("VisitorID setting error:", error);
+        this.visitorID = this.generateVisitorID();
     }
   };
 
@@ -39,7 +48,8 @@ export default class {
   };
 
 
-  listingPageView(category) {
+  listingPageView = (category) => {
+    this.ensureVisitorID();
     let parameters = JSON.stringify({
       type: this.type,
       visitorID: this.visitorID,
@@ -57,7 +67,8 @@ export default class {
     this.scoreMe();
   }
 
-  productPageView(productID, productCategory, productPrice) {
+  productPageView = async (productID, productCategory, productPrice) => {
+    await this.ensureVisitorID();
     let parameters = JSON.stringify({
       type: this.type,
       visitorID: this.visitorID,
@@ -76,7 +87,8 @@ export default class {
     this.scoreMe();
   }
 
-  addedToCart(productID) {
+  addedToCart = async (productID) => {
+    await this.ensureVisitorID();
     let parameters = JSON.stringify({
       type: this.type,
       visitorID: this.visitorID,
@@ -92,7 +104,8 @@ export default class {
     this.scoreMe();
   }
 
-  purchased(products = [{ id: "no-id", quantity: 1, price: 1 }]) {
+  purchased = async (products = [{ id: "no-id", quantity: 1, price: 1 }]) => {
+    await this.ensureVisitorID();
     let basketID = new Date().getTime().toString();
     let parameters = JSON.stringify({
       type: this.type,
@@ -113,11 +126,15 @@ export default class {
 
   async sendRequest(jsonObjectString, url, requestMethod) {
     try {
+
+      if (url.includes('localhost') && Platform.OS === 'ios') {
+        url = url.replace('localhost', '192.168.1.109');
+      }
+      
       const response = await fetch(url, {
         method: requestMethod,
         headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
+          "Content-Type": "text/plain",
         },
         body: jsonObjectString,
       });
@@ -137,16 +154,27 @@ export default class {
   }
 
   async scoreMe() {
+
+    const lastScoreTime = storage.getString("enh_last_score_time");
+    const lastScoreResponse = storage.getString("enh_last_score_response");
+    const now = new Date().getTime();
+    const threeDaysInMs = 3 * 24 * 60 * 60 * 1000;
+
+    if (lastScoreTime && lastScoreResponse && (now - parseInt(lastScoreTime) < threeDaysInMs)) {
+        this.pushResult(lastScoreResponse);
+        return;
+    }
+
     let parameters = JSON.stringify({
-      type: this.type,
-      visitorID: this.visitorID,
-      userID: this.userID,
-      id: this.visitorID,
-      deviceOsVersion:
-        Platform.OS === "android"
-          ? Platform.Version.toString()
-          : Platform.Version,
-      deviceType: Platform.OS === "android" ? "a2" : "i2",
+        type: this.type,
+        visitorID: this.visitorID,
+        userID: this.userID,
+        id: this.visitorID,
+        deviceOsVersion:
+            Platform.OS === "android"
+                ? Platform.Version.toString()
+                : Platform.Version,
+        deviceType: Platform.OS === "android" ? "a2" : "i2",
     });
 
     let url = this.customerUrl + this.visitorID;
@@ -154,31 +182,92 @@ export default class {
 
     let response = await this.sendRequest(parameters, url, requestMethod);
 
-    this.pushResult(response);
+    if (response) {
+        storage.set("enh_last_score_time", now.toString());
+        storage.set("enh_last_score_response", response);
+    }
 
+    this.pushResult(response);
   }
 
   pushResult(response) {
     let jsonObject = JSON.parse(response);
-    
-    let audiences = jsonObject.audiences;
-    audiences?.forEach((audience) => {
-      this.pushToFacebook(audience);
-      this.pushToGoogle(audience)
-    })
+
+    this.pushToFacebook(jsonObject);
+    this.pushToGoogle(jsonObject);
   }
 
-  pushToFacebook = (audience) => {
-    let params = {
-      eventID: audience.eventId,
-      name: audience.name
-    };
-    AppEventsLogger.logEvent(audience.name, params);
+  pushToFacebook = (response) => {
+    // Audience
+    if (response.audiences) {
+      response.audiences.forEach(audience => {
+        if (audience.adPlatform === "Facebook") {
+          let params = {
+            eventID: audience.eventId,
+            name: audience.name
+          };
+          AppEventsLogger.logEvent(audience.name, params);
+        }
+      });
+    }
+
+    // Campaign
+    if (response.campaigns) {
+      response.campaigns.forEach(campaign => {
+        if (campaign.adPlatform === "Facebook") {
+          let params = {
+            eventID: campaign.eventId,
+            name: campaign.name
+          };
+
+          // add bundle params
+          if (campaign.bundles && campaign.bundles.length > 0) {
+            campaign.bundles.forEach(bundle => {
+              params[bundle.name] = bundle.value;
+            });
+          }
+
+          AppEventsLogger.logEvent(campaign.name, params);
+        }
+      });
+    }
   }
 
-  pushToGoogle = (audience) => {
-    let name = audience.name.replace(/\s/g, '_').toLowerCase();
-    analytics().logEvent(name, {});
+  pushToGoogle = (response) => {
+    // Audience
+    if (response.audiences) {
+      response.audiences.forEach(audience => {
+        if (audience.adPlatform === "Google") {
+          let name = audience.name.replace(/\s/g, '_').toLowerCase();
+          analytics().logEvent(name, {value: 1});
+        }
+      });
+    }
+
+    // Campaign
+    if (response.campaigns) {
+      response.campaigns.forEach(campaign => {
+        if (campaign.adPlatform === "Google") {
+          let name = campaign.name.replace(/\s/g, '_').toLowerCase();
+          let params = {};
+          
+          // add bundle params
+          if (campaign.bundles && campaign.bundles.length > 0) {
+            campaign.bundles.forEach(bundle => {
+              params[bundle.name] = bundle.value;
+            });
+          }
+          
+          analytics().logEvent(name, params);
+        }
+      });
+    }
+  }
+
+  ensureVisitorID = async () => {
+    if (!this.visitorID) {
+        await this.setVisitorID();
+    }
   }
 
 }
